@@ -14,10 +14,7 @@ logger = logging.getLogger(__name__)
 
 def _save_json(name,config):
     with open(name,mode='w') as jf:
-        json.dump(config,jf)
-
-
-
+        json.dump(config, jf)
 
 def bb_intersection(boxA, boxB):
     xA = max(boxA[0], boxB[0])
@@ -30,40 +27,54 @@ def bb_intersection(boxA, boxB):
     return interArea
 
 logging.basicConfig(level=logging.DEBUG,format='%(levelname)s: %(message)s')
+
 my_parser = argparse.ArgumentParser(description='Birdmon')
-my_parser.add_argument('config', type=str,  help='config json file name')
+my_parser.add_argument('video_file_name', type=Path, help='Video file name')
+my_parser.add_argument('-output_dir', type=Path, default=Path('output'), help="output directory, defaults to 'output/'")
+
+
+my_parser.add_argument('-mask_box_coords',type=int, nargs=4, default=None,
+                help='Coordinates of mask box, if set the GUI bounding box will not be used. Format is x1,y1, x2,y2')
+my_parser.add_argument('-min_area_percent',type=float ,default=0.7, help='Min percentage area of the image taken by the bird, default 0.7')
+my_parser.add_argument('-csv_file_name',type=Path, default=None, help='output CSV file name, if not set it will be based on the video filename')
+my_parser.add_argument('-min_frame_alarm_count',type=float, help='How many frames to track the bird before triggering an event, default is 4', default=4)
+my_parser.add_argument('-log_file_name',type=Path, default=Path('log.txt'), help='log file name, defaults to log.txt')
+
 
 # Execute the parse_args() method
-args = my_parser.parse_args()
+config = vars(my_parser.parse_args())
 
-config_path = args.config
-logger.debug(f'Loading config file {config_path}')
+fileHandler = logging.FileHandler(config['log_file_name'],'w+')
+logger.addHandler(fileHandler)
 
-try:
-    with open(config_path) as jf:
-        config = json.load(jf)
-except:
-    logger.exception(f'Cannot load {config_path}')
-    sys.exit(-1)
+if config['csv_file_name'] is None:
+    config['csv_file_name'] = config['output_dir'] / Path(config['video_file_name'].stem).with_suffix('.csv')
+
+logger.info(f"Output CSV file: {config['csv_file_name']}")
+
+# make the output directory
+config['output_dir'].mkdir(parents= True, exist_ok= True)
+
+if config['mask_box_coords'] is not None:
+    config['mask_box_coords'] = ((config['mask_box_coords'][0], config['mask_box_coords'][1]),
+                                            (config['mask_box_coords'][2],config['mask_box_coords'][3]))
 
 logger.debug(f'Config: {config}')
-#config= {'video_file_name':'/home/phil/Datasets/birds/smaller_test.mp4','csv_filename': 'test.csv', 'min_area_percent': 0.7, 'keep_alive': 3 ,'min_frame_alarm_count':4,
-#    'mask_box_coords':((200, 100), (360, 330)) }
 
+cap = cv2.VideoCapture(str(config['video_file_name']))
+if not cap.isOpened():
+    logger.error(f"Can not open file {config['video_file_name']}")
+    sys.exit(-1)
 
-#cap = cv2.Vide'oCapture('/home/phil/Datasets/birds/trimmed_bird1.mp4')
-cap = cv2.VideoCapture(config['video_file_name'])
 fgbg = cv2.bgsegm.createBackgroundSubtractorMOG()
 frame_rate = cap.get(cv2.CAP_PROP_FPS)
 logger.info(f'Frame rate {frame_rate}')
-
-
 
 frame_alive_counter = 0
 bird_id =0
 
 try:
-    with open(config['csv_filename'], mode='w') as csv_file:
+    with open(config['csv_file_name'], mode='w') as csv_file:
         csv_writer = csv.writer(csv_file, delimiter=',')
         frame_counter = 0
         csv_writer.writerow(['Bird ID', 'Frame Number', 'Frame Time'])
@@ -72,9 +83,10 @@ try:
             if frame is None:
                 logger.warning('Bad frame error - aborting. This might be the end of the file')
                 sys.exit(1)
-            if frame_counter == 0:
-                roi = cv2.selectROI("ROI", frame)
-                logger.info(f'gui selectedf ROI: {roi}')
+            if frame_counter == 0 and config['mask_box_coords'] is None:
+                x,y,w,h = cv2.selectROI("ROI", frame)
+                config['mask_box_coords'] = ((x,y), (x+w, y+h))
+                logger.info(f"gui selected ROI: {config['mask_box_coords']}")
             frame_counter += 1
             fgmask = fgbg.apply(frame)
             if frame_counter == 1:
@@ -82,7 +94,7 @@ try:
                 image_area = frame.shape[0]*frame.shape[1]
                 min_area = config['min_area_percent']*image_area/100
                 logger.info(f'Image size {frame.shape} Image area {image_area}, min bird size {min_area}')
-            #print(image_area,min_area)
+        
 
             thresh = cv2.dilate(fgmask, None, iterations=2)
             cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -124,16 +136,12 @@ try:
                 logger.debug(f'alert bird ID {output}')
 
                 # save image
-                fname = Path(config_path).stem
-                img_path = Path(config['save_img_dir']) / Path(f'{fname}_{bird_id}.jpg')
+                fname = config['video_file_name'].stem
+                img_path = config['output_dir'] / Path(f'{fname}_{bird_id}.jpg')
                 logger.debug(f'Saving {img_path}')
                 cv2.imwrite(str(img_path), frame)
 
             cv2.imshow('frame',frame)
-            #print(frame_alive_counter)
-            #cv2.imshow('mask',fgmask)
-            #cv2.imshow('mask', thresh)
-
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
