@@ -8,6 +8,7 @@ import json
 import argparse
 from pathlib import Path
 import math
+from imutils.video import FileVideoStream
 
 logger = logging.getLogger(__name__)
 # ffmpeg -i 2017_0107_005726_017.MP4  -filter:v "fps=15, scale=640:-1" smaller.mp4
@@ -63,14 +64,14 @@ if config['mask_box_coords'] is not None:
                                             (config['mask_box_coords'][2],config['mask_box_coords'][3]))
 
 logger.debug(f'Config: {config}')
-
-cap = cv2.VideoCapture(str(config['video_file_name']))
-if not cap.isOpened():
+fvs = FileVideoStream(str(config['video_file_name'])).start()
+#cap = cv2.VideoCapture(str(config['video_file_name']))
+if not fvs.stream.isOpened():
     logger.error(f"Can not open file {config['video_file_name']}")
     sys.exit(-1)
 
 fgbg = cv2.bgsegm.createBackgroundSubtractorMOG()
-frame_rate = cap.get(cv2.CAP_PROP_FPS)
+frame_rate = fvs.stream.get(cv2.CAP_PROP_FPS)
 logger.info(f'Frame rate {frame_rate}')
 skip_rate = math.ceil(frame_rate/15)
 frame_alive_counter = 0
@@ -81,8 +82,9 @@ try:
         csv_writer = csv.writer(csv_file, delimiter=',')
         frame_counter = 0
         csv_writer.writerow(['Bird ID', 'Frame Number', 'Frame Time'])
-        while True:
-            ret, frame = cap.read()
+        while fvs.more():
+            #ret, frame = cap.read()
+            frame = fvs.read()
             if frame is None:
                 logger.warning('Bad frame error - aborting. This might be the end of the file')
                 sys.exit(1)
@@ -159,5 +161,5 @@ try:
                 break
 except:
     logger.exception('Failed to run')
-cap.release()
+#cap.release()
 cv2.destroyAllWindows()
