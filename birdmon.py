@@ -41,6 +41,7 @@ my_parser.add_argument('-csv_file_name',type=Path, default=None, help='output CS
 my_parser.add_argument('-min_frame_alarm_count',type=float, help='How many frames to track the bird before triggering an event, default is 4', default=4)
 my_parser.add_argument('-log_file_name',type=Path, default=Path('log.txt'), help='log file name, defaults to log.txt')
 my_parser.add_argument('-resize',action='store_true', help='Resizes the images to 640x? and 15 fps (ish)')
+my_parser.add_argument('-width',default=640, type=int, help='If resize flag is set, use this value for width of the image, default is 640')
 
 
 # Execute the parse_args() method
@@ -86,7 +87,7 @@ try:
                 logger.warning('Bad frame error - aborting. This might be the end of the file')
                 sys.exit(1)
             if config['resize']:
-                frame = imutils.resize(frame, width=640)
+                frame = imutils.resize(frame, width=config['width'])
 
             if frame_counter == 0 and config['mask_box_coords'] is None:
                 x,y,w,h = cv2.selectROI("ROI", frame)
