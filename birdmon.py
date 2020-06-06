@@ -94,7 +94,7 @@ try:
                 image_area = frame.shape[0]*frame.shape[1]
                 min_area = config['min_area_percent']*image_area/100
                 logger.info(f'Image size {frame.shape} Image area {image_area}, min bird size {min_area}')
-        
+
 
             thresh = cv2.dilate(fgmask, None, iterations=2)
             cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
