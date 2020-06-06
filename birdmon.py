@@ -7,6 +7,7 @@ import logging
 import json
 import argparse
 from pathlib import Path
+import math
 
 logger = logging.getLogger(__name__)
 # ffmpeg -i 2017_0107_005726_017.MP4  -filter:v "fps=15, scale=640:-1" smaller.mp4
@@ -39,6 +40,7 @@ my_parser.add_argument('-min_area_percent',type=float ,default=0.7, help='Min pe
 my_parser.add_argument('-csv_file_name',type=Path, default=None, help='output CSV file name, if not set it will be based on the video filename')
 my_parser.add_argument('-min_frame_alarm_count',type=float, help='How many frames to track the bird before triggering an event, default is 4', default=4)
 my_parser.add_argument('-log_file_name',type=Path, default=Path('log.txt'), help='log file name, defaults to log.txt')
+my_parser.add_argument('-resize',action='store_true', help='Resizes the images to 640x? and 15 fps (ish)')
 
 
 # Execute the parse_args() method
@@ -69,7 +71,7 @@ if not cap.isOpened():
 fgbg = cv2.bgsegm.createBackgroundSubtractorMOG()
 frame_rate = cap.get(cv2.CAP_PROP_FPS)
 logger.info(f'Frame rate {frame_rate}')
-
+skip_rate = math.ceil(frame_rate/15)
 frame_alive_counter = 0
 bird_id =0
 
@@ -83,18 +85,27 @@ try:
             if frame is None:
                 logger.warning('Bad frame error - aborting. This might be the end of the file')
                 sys.exit(1)
+            if config['resize']:
+                frame = imutils.resize(frame, width=640)
+
             if frame_counter == 0 and config['mask_box_coords'] is None:
                 x,y,w,h = cv2.selectROI("ROI", frame)
                 config['mask_box_coords'] = ((x,y), (x+w, y+h))
                 logger.info(f"gui selected ROI: {config['mask_box_coords']}")
-            frame_counter += 1
-            fgmask = fgbg.apply(frame)
-            if frame_counter == 1:
+
+            if frame_counter == 0:
 
                 image_area = frame.shape[0]*frame.shape[1]
                 min_area = config['min_area_percent']*image_area/100
                 logger.info(f'Image size {frame.shape} Image area {image_area}, min bird size {min_area}')
 
+            frame_counter += 1
+            if frame_counter % skip_rate != 0:
+                #print('skip')
+                continue
+            #print('process')
+
+            fgmask = fgbg.apply(frame)
 
             thresh = cv2.dilate(fgmask, None, iterations=2)
             cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
